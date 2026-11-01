@@ -17,12 +17,15 @@ interface Tokens {
   accessToken: string
   refreshToken: string
   expiresAt: number
+  // Space-separated scopes the tokens were granted. Missing in tokens saved by older versions.
+  scope?: string
 }
 
 interface TokenResponse {
   access_token: string
   refresh_token?: string
   expires_in: number
+  scope?: string
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -46,12 +49,13 @@ function loadTokens(): Tokens | null {
   return raw ? (JSON.parse(raw) as Tokens) : null
 }
 
-function saveTokens(response: TokenResponse, previousRefreshToken?: string): void {
+function saveTokens(response: TokenResponse, previous?: Tokens): void {
   const tokens: Tokens = {
     accessToken: response.access_token,
     // Spotify may or may not rotate the refresh token; keep the old one if it doesn't.
-    refreshToken: response.refresh_token ?? previousRefreshToken ?? '',
+    refreshToken: response.refresh_token ?? previous?.refreshToken ?? '',
     expiresAt: Date.now() + response.expires_in * 1000,
+    scope: response.scope ?? previous?.scope,
   }
   localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
 }
@@ -69,8 +73,13 @@ async function requestToken(params: Record<string, string>): Promise<TokenRespon
   return response.json()
 }
 
+/**
+ * True when we have tokens that cover every scope the app needs. When a new version of the app
+ * asks for more scopes, older tokens don't count, so the user is asked to log in again.
+ */
 export function isLoggedIn(): boolean {
-  return loadTokens() !== null
+  const granted = new Set(loadTokens()?.scope?.split(' '))
+  return SCOPES.every((scope) => granted.has(scope))
 }
 
 /** Redirects the browser to Spotify's login page. */
@@ -136,7 +145,7 @@ async function refresh(tokens: Tokens): Promise<string> {
       grant_type: 'refresh_token',
       refresh_token: tokens.refreshToken,
     })
-    saveTokens(response, tokens.refreshToken)
+    saveTokens(response, tokens)
     return response.access_token
   } catch (e) {
     // A refresh token that no longer works means the user has to log in again.

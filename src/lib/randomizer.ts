@@ -37,11 +37,14 @@ export function isTargetPlaylist(playlist: Playlist): boolean {
   return playlist.description?.includes('(randomizer:') ?? false
 }
 
-/** Playlists whose contents the API lets us read: owned or collaborative, excluding our own targets. */
+/**
+ * Playlists whose contents the API lets us read (owned or collaborative, excluding our own
+ * targets), sorted alphabetically.
+ */
 export function selectableSources(playlists: Playlist[], user: User): Playlist[] {
-  return playlists.filter(
-    (p) => (p.owner.id === user.id || p.collaborative) && !isTargetPlaylist(p),
-  )
+  return playlists
+    .filter((p) => (p.owner.id === user.id || p.collaborative) && !isTargetPlaylist(p))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
 }
 
 /** All tracks of a source, with duplicates (the same track added twice) removed. */
