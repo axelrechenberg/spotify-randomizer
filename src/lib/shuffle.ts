@@ -18,3 +18,8 @@ export function shuffle<T>(items: readonly T[]): T[] {
   }
   return result
 }
+
+/** Picks `count` items uniformly at random, returned in random order. */
+export function sample<T>(items: readonly T[], count: number): T[] {
+  return shuffle(items).slice(0, count)
+}

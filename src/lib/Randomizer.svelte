@@ -1,20 +1,36 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { randomize, selectableSources, sourceName, type Progress, type Source } from './randomizer'
-  import { getMyPlaylists, playlistSize, type Playlist, type User } from './spotify'
+  import {
+    createRandomPlaylist,
+    loadTracks,
+    sameSource,
+    selectableSources,
+    sourceName,
+    type Source,
+  } from './randomizer'
+  import { getMyPlaylists, playlistSize, type Playlist, type Track, type User } from './spotify'
+
+  type Progress = { done: number; total: number }
 
   let { user }: { user: User } = $props()
 
   let playlists = $state<Playlist[]>([])
-  let loading = $state(true)
+  let loadingPlaylists = $state(true)
   let selected = $state<Source | null>(null)
-  let progress = $state<Progress | null>(null)
+  let tracks = $state<Track[] | null>(null)
+  let reading = $state<Progress | null>(null)
+  let count = $state(0)
+  let writing = $state<Progress | null>(null)
   let result = $state<Playlist | null>(null)
   let error = $state<string | null>(null)
 
-  // Recomputed automatically whenever `playlists` changes.
+  // Recomputed automatically whenever the values they read change.
   let sources = $derived(selectableSources(playlists, user))
-  let running = $derived(progress !== null)
+  let validCount = $derived(Number.isInteger(count) && count >= 1 && count <= (tracks?.length ?? 0))
+
+  function showError(e: unknown) {
+    error = e instanceof Error ? e.message : String(e)
+  }
 
   async function loadPlaylists() {
     playlists = await getMyPlaylists()
@@ -24,44 +40,68 @@
     try {
       await loadPlaylists()
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      showError(e)
     } finally {
-      loading = false
+      loadingPlaylists = false
     }
   })
 
-  function isSelected(source: Source): boolean {
-    if (!selected || selected.kind !== source.kind) return false
-    return source.kind === 'liked' || (selected.kind === 'playlist' && selected.playlist.id === source.playlist.id)
+  async function select(source: Source) {
+    if (sameSource(source, selected)) return
+    selected = source
+    tracks = null
+    result = null
+    error = null
+    reading = { done: 0, total: 0 }
+    try {
+      const loaded = await loadTracks(source, (done, total) => {
+        if (sameSource(source, selected)) reading = { done, total }
+      })
+      // The user may have picked another source while this one was loading.
+      if (!sameSource(source, selected)) return
+      tracks = loaded
+      count = loaded.length
+    } catch (e) {
+      if (sameSource(source, selected)) showError(e)
+    } finally {
+      if (sameSource(source, selected)) reading = null
+    }
   }
 
-  async function run() {
-    if (!selected) return
+  async function create() {
+    if (!selected || !tracks || !validCount) return
     error = null
     result = null
-    progress = { phase: 'reading', done: 0, total: 0 }
+    writing = { done: 0, total: count }
     try {
-      result = await randomize(selected, playlists, user, (p) => (progress = p))
+      result = await createRandomPlaylist(selected, tracks, count, playlists, user, (done, total) => {
+        writing = { done, total }
+      })
       // Reload so a newly created target playlist is found (and reused) on the next run.
       await loadPlaylists()
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
+      showError(e)
     } finally {
-      progress = null
+      writing = null
     }
   }
 </script>
 
-{#snippet option(source: Source, count: number | null)}
+{#snippet option(source: Source, size: number | null)}
   <li>
-    <button class="option" class:selected={isSelected(source)} disabled={running} onclick={() => (selected = source)}>
+    <button
+      class="option"
+      class:selected={sameSource(source, selected)}
+      disabled={writing !== null}
+      onclick={() => select(source)}
+    >
       <span class="name">{sourceName(source)}</span>
-      {#if count !== null}<span class="count">{count} tracks</span>{/if}
+      {#if size !== null}<span class="count">{size} tracks</span>{/if}
     </button>
   </li>
 {/snippet}
 
-{#if loading}
+{#if loadingPlaylists}
   <p>Loading your playlists…</p>
 {:else}
   <h2>Pick what to shuffle</h2>
@@ -72,18 +112,6 @@
     {/each}
   </ul>
   <p class="hint">Only playlists you own or collaborate on can be shuffled — Spotify doesn't let apps read others.</p>
-
-  <div class="actions">
-    <button class="primary" disabled={!selected || running} onclick={run}>
-      {#if progress?.phase === 'reading'}
-        Reading… {progress.done}{progress.total ? ` / ${progress.total}` : ''}
-      {:else if progress?.phase === 'writing'}
-        Writing… {progress.done} / {progress.total}
-      {:else}
-        Shuffle
-      {/if}
-    </button>
-  </div>
 {/if}
 
 {#if error}
@@ -95,6 +123,32 @@
     Done! <a href={result.external_urls.spotify} target="_blank" rel="noopener">Open “{result.name}” in Spotify</a>
     and play it with shuffle <strong>off</strong>.
   </p>
+{/if}
+
+{#if selected}
+  <div class="panel">
+    {#if reading}
+      <p>Loading {sourceName(selected)}… {reading.done}{reading.total ? ` / ${reading.total}` : ''}</p>
+    {:else if tracks}
+      <label class="size">
+        <span>Tracks to include</span>
+        <span class="size-inputs">
+          <input type="range" min="1" max={tracks.length} bind:value={count} disabled={writing !== null} />
+          <input type="number" min="1" max={tracks.length} bind:value={count} disabled={writing !== null} />
+          <span class="count">of {tracks.length}</span>
+        </span>
+      </label>
+      <button class="primary" disabled={!validCount || writing !== null} onclick={create}>
+        {#if writing}
+          Writing… {writing.done} / {writing.total}
+        {:else if validCount && count < tracks.length}
+          Create playlist with {count} random tracks
+        {:else}
+          Create shuffled playlist
+        {/if}
+      </button>
+    {/if}
+  </div>
 {/if}
 
 <style>
@@ -144,11 +198,46 @@
     color: #a7a7a7;
   }
 
-  .actions {
+  /* Stays at the bottom of the screen so the controls are reachable under a long playlist list. */
+  .panel {
     position: sticky;
     bottom: 0;
+    display: grid;
+    gap: 0.75rem;
     padding: 1rem 0 calc(1rem + env(safe-area-inset-bottom));
     background: #121212;
+    border-top: 1px solid #2a2a2a;
+  }
+
+  .panel p {
+    margin: 0;
+  }
+
+  .size {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .size-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  input[type='range'] {
+    flex: 1;
+    min-width: 0;
+    accent-color: #1ed760;
+  }
+
+  input[type='number'] {
+    width: 5rem;
+    font: inherit;
+    padding: 0.25rem 0.5rem;
+    color: inherit;
+    background: #1f1f1f;
+    border: 1px solid #3a3a3a;
+    border-radius: 0.375rem;
   }
 
   .primary {

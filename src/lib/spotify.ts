@@ -33,15 +33,26 @@ interface Page<T> {
   total: number
 }
 
+export interface Artist {
+  id: string
+  name: string
+}
+
+export interface Track {
+  uri: string
+  name: string
+  artists: Artist[]
+}
+
 interface PlaylistItem {
   is_local: boolean
   // `item` replaced `track` in Feb 2026. Null when the track was removed from Spotify.
-  item?: { uri: string } | null
-  track?: { uri: string } | null
+  item?: Track | null
+  track?: Track | null
 }
 
 interface SavedTrack {
-  track: { uri: string } | null
+  track: Track | null
 }
 
 export type ProgressCallback = (done: number, total: number) => void
@@ -104,18 +115,18 @@ export function playlistSize(playlist: Playlist): number {
   return playlist.items?.total ?? playlist.tracks?.total ?? 0
 }
 
-/** Track URIs of a playlist the user owns or collaborates on. Local files are skipped. */
-export async function getPlaylistUris(playlistId: string, onProgress?: ProgressCallback): Promise<string[]> {
+/** Tracks of a playlist the user owns or collaborates on. Local files are skipped. */
+export async function getPlaylistTracks(playlistId: string, onProgress?: ProgressCallback): Promise<Track[]> {
   const items = await getAllPages<PlaylistItem>(`/playlists/${playlistId}/items?limit=${PAGE_SIZE}`, onProgress)
   return items
     .filter((entry) => !entry.is_local)
-    .map((entry) => (entry.item ?? entry.track)?.uri)
-    .filter((uri): uri is string => !!uri)
+    .map((entry) => entry.item ?? entry.track)
+    .filter((track): track is Track => !!track?.uri)
 }
 
-export async function getLikedSongUris(onProgress?: ProgressCallback): Promise<string[]> {
+export async function getLikedSongs(onProgress?: ProgressCallback): Promise<Track[]> {
   const items = await getAllPages<SavedTrack>(`/me/tracks?limit=${PAGE_SIZE}`, onProgress)
-  return items.map((entry) => entry.track?.uri).filter((uri): uri is string => !!uri)
+  return items.map((entry) => entry.track).filter((track): track is Track => !!track?.uri)
 }
 
 export function createPlaylist(name: string, description: string): Promise<Playlist> {

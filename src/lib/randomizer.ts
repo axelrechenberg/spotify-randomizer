@@ -1,19 +1,19 @@
-// Ties it together: read a source, shuffle it, write it to that source's target playlist.
+// Ties it together: load a source's tracks, pick and shuffle them, write them to that source's
+// target playlist.
 
-import { shuffle } from './shuffle'
+import { sample } from './shuffle'
 import {
   createPlaylist,
-  getLikedSongUris,
-  getPlaylistUris,
+  getLikedSongs,
+  getPlaylistTracks,
   replacePlaylistItems,
   type Playlist,
   type ProgressCallback,
+  type Track,
   type User,
 } from './spotify'
 
 export type Source = { kind: 'liked' } | { kind: 'playlist'; playlist: Playlist }
-
-export type Progress = { phase: 'reading' | 'writing'; done: number; total: number }
 
 function sourceKey(source: Source): string {
   return source.kind === 'liked' ? 'liked' : source.playlist.id
@@ -21,6 +21,10 @@ function sourceKey(source: Source): string {
 
 export function sourceName(source: Source): string {
   return source.kind === 'liked' ? 'Liked Songs' : source.playlist.name
+}
+
+export function sameSource(a: Source | null, b: Source | null): boolean {
+  return !!a && !!b && sourceKey(a) === sourceKey(b)
 }
 
 // The target playlist is recognised by this marker in its description, so it is found again
@@ -40,28 +44,35 @@ export function selectableSources(playlists: Playlist[], user: User): Playlist[]
   )
 }
 
-export async function randomize(
+/** All tracks of a source, with duplicates (the same track added twice) removed. */
+export async function loadTracks(source: Source, onProgress: ProgressCallback): Promise<Track[]> {
+  const tracks =
+    source.kind === 'liked'
+      ? await getLikedSongs(onProgress)
+      : await getPlaylistTracks(source.playlist.id, onProgress)
+
+  const seen = new Set<string>()
+  return tracks.filter((track) => !seen.has(track.uri) && seen.add(track.uri))
+}
+
+/** Writes `count` randomly picked tracks, in random order, to the source's target playlist. */
+export async function createRandomPlaylist(
   source: Source,
+  tracks: Track[],
+  count: number,
   playlists: Playlist[],
   user: User,
-  onProgress: (progress: Progress) => void,
+  onProgress: ProgressCallback,
 ): Promise<Playlist> {
-  const reading: ProgressCallback = (done, total) => onProgress({ phase: 'reading', done, total })
-  const uris =
-    source.kind === 'liked'
-      ? await getLikedSongUris(reading)
-      : await getPlaylistUris(source.playlist.id, reading)
-
   const marker = targetMarker(source)
   const target =
     playlists.find((p) => p.owner.id === user.id && p.description?.includes(marker)) ??
     (await createPlaylist(
       `🔀 ${sourceName(source)}`,
-      `Shuffled copy of ${sourceName(source)}. Play in order with shuffle off. ${marker}`,
+      `Random picks from ${sourceName(source)}. Play in order with shuffle off. ${marker}`,
     ))
 
-  await replacePlaylistItems(target.id, shuffle(uris), (done, total) =>
-    onProgress({ phase: 'writing', done, total }),
-  )
+  const picked = sample(tracks, count)
+  await replacePlaylistItems(target.id, picked.map((track) => track.uri), onProgress)
   return target
 }
