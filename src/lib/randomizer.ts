@@ -1,7 +1,6 @@
-// Ties it together: load a source's tracks, pick and shuffle them, write them to that source's
-// target playlist.
+// Sources and target playlists: which playlists can be shuffled, loading a source's tracks, and
+// writing the picked tracks to that source's target playlist.
 
-import { sample } from './shuffle'
 import {
   createPlaylist,
   getLikedSongs,
@@ -58,11 +57,10 @@ export async function loadTracks(source: Source, onProgress: ProgressCallback): 
   return tracks.filter((track) => !seen.has(track.uri) && seen.add(track.uri))
 }
 
-/** Writes `count` randomly picked tracks, in random order, to the source's target playlist. */
-export async function createRandomPlaylist(
+/** Replaces the contents of the source's target playlist with `tracks`, creating it if needed. */
+export async function saveToTarget(
   source: Source,
   tracks: Track[],
-  count: number,
   playlists: Playlist[],
   user: User,
   onProgress: ProgressCallback,
@@ -75,7 +73,6 @@ export async function createRandomPlaylist(
       `Random picks from ${sourceName(source)}. Play in order with shuffle off. ${marker}`,
     ))
 
-  const picked = sample(tracks, count)
-  await replacePlaylistItems(target.id, picked.map((track) => track.uri), onProgress)
+  await replacePlaylistItems(target.id, tracks.map((track) => track.uri), onProgress)
   return target
 }

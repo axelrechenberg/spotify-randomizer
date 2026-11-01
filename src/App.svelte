@@ -35,14 +35,14 @@
   {#if loading}
     <p>Loading…</p>
   {:else if user}
-    <p class="account">
+    <p class="muted">
       Logged in as <strong>{user.display_name ?? user.id}</strong>
-      <button class="link" onclick={handleLogout}>Log out</button>
+      <button class="link logout" onclick={handleLogout}>Log out</button>
     </p>
     <Randomizer {user} />
   {:else}
     <p>Shuffle a playlist once, then play it in order.</p>
-    <button onclick={login}>Log in with Spotify</button>
+    <button class="primary" onclick={login}>Log in with Spotify</button>
   {/if}
 </main>
 
@@ -53,31 +53,7 @@
     padding: 2rem 1rem;
   }
 
-  button {
-    font: inherit;
-    font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 999px;
-    background: #1ed760;
-    color: #000;
-    cursor: pointer;
-  }
-
-  .account {
-    color: #a7a7a7;
-  }
-
-  .link {
-    padding: 0;
+  .logout {
     margin-left: 0.5rem;
-    background: none;
-    color: #1ed760;
-    font-weight: normal;
-    text-decoration: underline;
-  }
-
-  .error {
-    color: #ff6b6b;
   }
 </style>

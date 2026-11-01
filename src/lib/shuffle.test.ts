@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sample, shuffle } from './shuffle'
+import { sample, shuffle, weightedSample } from './shuffle'
 
 describe('shuffle', () => {
   it('keeps every item exactly once', () => {
@@ -56,5 +56,26 @@ describe('sample', () => {
       expect(count).toBeGreaterThan(9_000)
       expect(count).toBeLessThan(11_000)
     }
+  })
+})
+
+describe('weightedSample', () => {
+  it('picks the requested number of distinct items', () => {
+    const items = Array.from({ length: 200 }, (_, i) => i)
+    const picked = weightedSample(items, 50, (i) => (i % 2 ? 4 : 1))
+    expect(picked).toHaveLength(50)
+    expect(new Set(picked).size).toBe(50)
+  })
+
+  it('returns everything when asked for more than there is', () => {
+    expect(weightedSample([1, 2, 3], 10, () => 1).sort()).toEqual([1, 2, 3])
+  })
+
+  it('picks items in proportion to their weight', () => {
+    // Weights 1 and 3: picking one item, 'b' should win ~75% of 40,000 runs.
+    let b = 0
+    for (let i = 0; i < 40_000; i++) if (weightedSample(['a', 'b'], 1, (x) => (x === 'b' ? 3 : 1))[0] === 'b') b++
+    expect(b).toBeGreaterThan(29_000)
+    expect(b).toBeLessThan(31_000)
   })
 })

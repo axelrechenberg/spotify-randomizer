@@ -23,3 +23,32 @@ export function shuffle<T>(items: readonly T[]): T[] {
 export function sample<T>(items: readonly T[], count: number): T[] {
   return shuffle(items).slice(0, count)
 }
+
+/** `count` floats in (0, 1] from the cryptographic RNG, generated in bulk for speed. */
+function randomUnitFloats(count: number): Float64Array {
+  const result = new Float64Array(count)
+  // getRandomValues fills at most 64 KiB per call.
+  const chunk = new Uint32Array(16_384)
+  for (let start = 0; start < count; start += chunk.length) {
+    crypto.getRandomValues(chunk)
+    const end = Math.min(count, start + chunk.length)
+    for (let i = start; i < end; i++) result[i] = (chunk[i - start] + 1) / 0x1_0000_0000
+  }
+  return result
+}
+
+/**
+ * Picks `count` items at random without replacement, where in every draw an item with weight 4
+ * is four times as likely to be picked as an item with weight 1 (the Efraimidis–Spirakis method).
+ * The result favours heavy items at the front, so shuffle it if order matters.
+ */
+export function weightedSample<T>(items: readonly T[], count: number, weight: (item: T) => number): T[] {
+  // Each item gets the key u^(1/weight) for a random u; the `count` largest keys win.
+  // log(u) / weight sorts the same way and doesn't underflow for large weights.
+  const u = randomUnitFloats(items.length)
+  return items
+    .map((item, i) => ({ item, key: Math.log(u[i]) / weight(item) }))
+    .sort((a, b) => b.key - a.key)
+    .slice(0, count)
+    .map(({ item }) => item)
+}
