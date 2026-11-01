@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { handleRedirect, isLoggedIn, login, logout } from './lib/auth'
+  import Randomizer from './lib/Randomizer.svelte'
   import { getCurrentUser, type User } from './lib/spotify'
 
   let user = $state<User | null>(null)
@@ -34,8 +35,11 @@
   {#if loading}
     <p>Loading…</p>
   {:else if user}
-    <p>Logged in as <strong>{user.display_name ?? user.id}</strong>.</p>
-    <button onclick={handleLogout}>Log out</button>
+    <p class="account">
+      Logged in as <strong>{user.display_name ?? user.id}</strong>
+      <button class="link" onclick={handleLogout}>Log out</button>
+    </p>
+    <Randomizer {user} />
   {:else}
     <p>Shuffle a playlist once, then play it in order.</p>
     <button onclick={login}>Log in with Spotify</button>
@@ -58,6 +62,19 @@
     background: #1ed760;
     color: #000;
     cursor: pointer;
+  }
+
+  .account {
+    color: #a7a7a7;
+  }
+
+  .link {
+    padding: 0;
+    margin-left: 0.5rem;
+    background: none;
+    color: #1ed760;
+    font-weight: normal;
+    text-decoration: underline;
   }
 
   .error {

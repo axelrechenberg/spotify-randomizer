@@ -12,6 +12,7 @@ no client secret and no backend.
 npm install
 npm run dev      # http://127.0.0.1:5173/spotify-randomizer/
 npm run check    # type-check
+npm test         # unit tests
 npm run build    # production build into dist/
 npm run preview  # serve the production build at http://127.0.0.1:4173/spotify-randomizer/
 npm run icons    # regenerate PWA icons from public/favicon.svg
