@@ -42,17 +42,35 @@ export interface Track {
   uri: string
   name: string
   artists: Artist[]
+  /** When it was added to the playlist or liked, in ms since 1970. 0 if Spotify doesn't know. */
+  addedAt: number
 }
+
+/** A track as the API returns it; the added date lives on the surrounding item. */
+type ApiTrack = Omit<Track, 'addedAt'>
 
 interface PlaylistItem {
   is_local: boolean
+  // Null for some tracks added before Spotify started recording it.
+  added_at: string | null
   // `item` replaced `track` in Feb 2026. Null when the track was removed from Spotify.
-  item?: Track | null
-  track?: Track | null
+  item?: ApiTrack | null
+  track?: ApiTrack | null
 }
 
 interface SavedTrack {
-  track: Track | null
+  added_at: string
+  track: ApiTrack | null
+}
+
+function withAddedAt(track: ApiTrack | null | undefined, addedAt: string | null): Track | null {
+  if (!track?.uri) return null
+  const time = addedAt ? Date.parse(addedAt) : NaN
+  return { ...track, addedAt: Number.isNaN(time) ? 0 : time }
+}
+
+function isTrack(track: Track | null): track is Track {
+  return track !== null
 }
 
 export type ProgressCallback = (done: number, total: number) => void
@@ -120,13 +138,13 @@ export async function getPlaylistTracks(playlistId: string, onProgress?: Progres
   const items = await getAllPages<PlaylistItem>(`/playlists/${playlistId}/items?limit=${PAGE_SIZE}`, onProgress)
   return items
     .filter((entry) => !entry.is_local)
-    .map((entry) => entry.item ?? entry.track)
-    .filter((track): track is Track => !!track?.uri)
+    .map((entry) => withAddedAt(entry.item ?? entry.track, entry.added_at))
+    .filter(isTrack)
 }
 
 export async function getLikedSongs(onProgress?: ProgressCallback): Promise<Track[]> {
   const items = await getAllPages<SavedTrack>(`/me/tracks?limit=${PAGE_SIZE}`, onProgress)
-  return items.map((entry) => entry.track).filter((track): track is Track => !!track?.uri)
+  return items.map((entry) => withAddedAt(entry.track, entry.added_at)).filter(isTrack)
 }
 
 export function createPlaylist(name: string, description: string): Promise<Playlist> {

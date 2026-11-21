@@ -1,6 +1,14 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity'
-  import { artistStats, BOOST_LEVELS, fullyIncludedCount, previewBoosts, type Boost, type Boosts } from './bias'
+  import {
+    artistStats,
+    BOOST_LEVELS,
+    fullyIncludedCount,
+    previewPicks,
+    type Boost,
+    type Boosts,
+    type Recency,
+  } from './bias'
   import { loadFavorites, saveFavorites, suggestArtists } from './favorites'
   import type { Track } from './spotify'
 
@@ -8,10 +16,11 @@
   let {
     tracks,
     count,
+    recency,
     userId,
     boosts = $bindable(),
     disabled = false,
-  }: { tracks: Track[]; count: number; userId: string; boosts: Boosts; disabled?: boolean } = $props()
+  }: { tracks: Track[]; count: number; recency: Recency; userId: string; boosts: Boosts; disabled?: boolean } = $props()
 
   const SUGGESTIONS = 8
   const SEARCH_RESULTS = 20
@@ -20,7 +29,8 @@
   // Read once: the logged-in user does not change while the app is open.
   // svelte-ignore state_referenced_locally
   const favorites = new SvelteSet(loadFavorites(userId))
-  let preview = $state<Map<string, number> | null>(null)
+  // Expected picks per boosted artist, and without their boost when recency makes that hard to compute.
+  let preview = $state<{ expected: Map<string, number>; unboosted: Map<string, number> | null } | null>(null)
 
   let artists = $derived(artistStats(tracks))
   let boosted = $derived(artists.filter((artist) => boosts[artist.id]))
@@ -34,11 +44,18 @@
   $effect(() => {
     const current = $state.snapshot(boosts)
     const size = count
-    if (Object.keys(current).length === 0) {
+    const bias = $state.snapshot(recency)
+    const ids = Object.keys(current)
+    if (ids.length === 0) {
       preview = null
       return
     }
-    const timer = setTimeout(() => (preview = previewBoosts(tracks, size, current)), 150)
+    const timer = setTimeout(() => {
+      preview = {
+        expected: previewPicks(tracks, size, current, bias, ids),
+        unboosted: bias ? previewPicks(tracks, size, {}, bias, ids) : null,
+      }
+    }, 150)
     return () => clearTimeout(timer)
   })
 
@@ -76,7 +93,8 @@
   {#if boosted.length > 0}
     <ul>
       {#each boosted as artist (artist.id)}
-        {@const expected = preview?.get(artist.id)}
+        {@const expected = preview?.expected.get(artist.id)}
+        {@const unboosted = preview?.unboosted?.get(artist.id) ?? (artist.trackCount * count) / tracks.length}
         <li class="row">
           {@render star(artist.id)}
           <div class="artist">
@@ -87,7 +105,7 @@
               {:else}
                 ≈ {Math.round(expected)} of {artist.trackCount} tracks
                 {#if boosts[artist.id] !== 'all'}
-                  (≈ {Math.round((artist.trackCount * count) / tracks.length)} without boost)
+                  (≈ {Math.round(unboosted)} without boost)
                 {/if}
               {/if}
             </span>

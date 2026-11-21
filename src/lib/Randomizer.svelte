@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import ArtistBoosts from './ArtistBoosts.svelte'
-  import { pickTracks, type Boosts } from './bias'
+  import { pickTracks, type Boosts, type Recency } from './bias'
   import { loadTracks, sameSource, saveToTarget, selectableSources, sourceName, type Source } from './randomizer'
+  import RecencyBias from './RecencyBias.svelte'
   import SourcePicker from './SourcePicker.svelte'
   import { getMyPlaylists, type Playlist, type Track, type User } from './spotify'
 
@@ -20,6 +21,8 @@
   let reading = $state<Progress | null>(null)
   let count = $state(0)
   let boosts = $state<Boosts>({})
+  // Kept when switching playlists: it's a preference rather than a per-playlist choice like boosts.
+  let recency = $state<Recency>(null)
   let writing = $state<Progress | null>(null)
   let result = $state<Playlist | null>(null)
   let error = $state<string | null>(null)
@@ -81,7 +84,7 @@
     if (!selected || !tracks || !validCount) return
     error = null
     result = null
-    const picked = pickTracks(tracks, count, isSubset ? $state.snapshot(boosts) : {})
+    const picked = pickTracks(tracks, count, isSubset ? $state.snapshot(boosts) : {}, isSubset ? $state.snapshot(recency) : null)
     writing = { done: 0, total: picked.length }
     try {
       result = await saveToTarget(selected, picked, playlists, user, (done, total) => {
@@ -121,9 +124,10 @@
     </div>
 
     {#if isSubset}
-      <ArtistBoosts {tracks} {count} userId={user.id} bind:boosts disabled={writing !== null} />
+      <RecencyBias {tracks} bind:recency disabled={writing !== null} />
+      <ArtistBoosts {tracks} {count} {recency} userId={user.id} bind:boosts disabled={writing !== null} />
     {:else}
-      <p class="hint">Pick fewer tracks than the playlist has to boost specific artists.</p>
+      <p class="hint">Pick fewer tracks than the playlist has to prefer recent songs or boost specific artists.</p>
     {/if}
 
     <div class="panel">
