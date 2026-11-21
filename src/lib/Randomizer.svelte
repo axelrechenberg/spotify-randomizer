@@ -121,7 +121,7 @@
     </div>
 
     {#if isSubset}
-      <ArtistBoosts {tracks} {count} bind:boosts disabled={writing !== null} />
+      <ArtistBoosts {tracks} {count} userId={user.id} bind:boosts disabled={writing !== null} />
     {:else}
       <p class="hint">Pick fewer tracks than the playlist has to boost specific artists.</p>
     {/if}

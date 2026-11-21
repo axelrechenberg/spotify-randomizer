@@ -1,28 +1,32 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity'
   import { artistStats, BOOST_LEVELS, fullyIncludedCount, previewBoosts, type Boost, type Boosts } from './bias'
+  import { loadFavorites, saveFavorites, suggestArtists } from './favorites'
   import type { Track } from './spotify'
 
   // `boosts` is $bindable: the parent passes it with bind:boosts and sees every change made here.
   let {
     tracks,
     count,
+    userId,
     boosts = $bindable(),
     disabled = false,
-  }: { tracks: Track[]; count: number; boosts: Boosts; disabled?: boolean } = $props()
+  }: { tracks: Track[]; count: number; userId: string; boosts: Boosts; disabled?: boolean } = $props()
 
   const SUGGESTIONS = 8
   const SEARCH_RESULTS = 20
 
   let query = $state('')
+  // Read once: the logged-in user does not change while the app is open.
+  // svelte-ignore state_referenced_locally
+  const favorites = new SvelteSet(loadFavorites(userId))
   let preview = $state<Map<string, number> | null>(null)
 
   let artists = $derived(artistStats(tracks))
   let boosted = $derived(artists.filter((artist) => boosts[artist.id]))
   let candidates = $derived.by(() => {
     const unboosted = artists.filter((artist) => !boosts[artist.id])
-    const q = query.trim().toLowerCase()
-    if (!q) return unboosted.slice(0, SUGGESTIONS)
-    return unboosted.filter((artist) => artist.name.toLowerCase().includes(q)).slice(0, SEARCH_RESULTS)
+    return suggestArtists(unboosted, favorites, query, query.trim() ? SEARCH_RESULTS : SUGGESTIONS)
   })
   let fullyIncluded = $derived(fullyIncludedCount(tracks, boosts))
 
@@ -43,11 +47,28 @@
     else boosts[artistId] = (value === 'all' ? 'all' : Number(value)) as Boost
   }
 
+  function toggleFavorite(artistId: string) {
+    if (!favorites.delete(artistId)) favorites.add(artistId)
+    saveFavorites(userId, favorites)
+  }
+
   function addBoost(artistId: string) {
     boosts[artistId] = 2
     query = ''
   }
 </script>
+
+{#snippet star(artistId: string)}
+  {@const favorite = favorites.has(artistId)}
+  <button
+    class="star"
+    class:favorite
+    aria-pressed={favorite}
+    aria-label="Favorite"
+    title={favorite ? 'Remove from favorites' : 'Add to favorites'}
+    onclick={() => toggleFavorite(artistId)}>{favorite ? '★' : '☆'}</button
+  >
+{/snippet}
 
 <section>
   <h2>Boost artists <span class="hint">(optional)</span></h2>
@@ -57,6 +78,7 @@
       {#each boosted as artist (artist.id)}
         {@const expected = preview?.get(artist.id)}
         <li class="row">
+          {@render star(artist.id)}
           <div class="artist">
             <span>{artist.name}</span>
             <span class="hint">
@@ -96,6 +118,7 @@
   <ul>
     {#each candidates as artist (artist.id)}
       <li class="row">
+        {@render star(artist.id)}
         <div class="artist">
           <span>{artist.name}</span>
           <span class="hint">{artist.trackCount} tracks</span>
@@ -135,6 +158,22 @@
   .artist {
     display: grid;
     min-width: 0;
+    margin-right: auto;
+  }
+
+  .star {
+    flex: none;
+    padding: 0.25rem;
+    margin: -0.25rem -0.5rem -0.25rem -0.25rem;
+    border: none;
+    background: none;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #6a6a6a;
+  }
+
+  .star.favorite {
+    color: #f5c451;
   }
 
   .artist > span {
